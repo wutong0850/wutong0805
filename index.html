@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>多人聊天室</title>
+    <style>
+        /* ---------- CSS变量 & 深色模式 ---------- */
+        :root {
+            --bg-gradient: linear-gradient(145deg, #e9edf5 0%, #d5dce8 100%);
+            --container-bg: rgba(255, 255, 255, 0.70);
+            --border-color: rgba(0,0,0,0.08);
+            --text-primary: #1a1e2b;
+            --text-secondary: #687086;
+            --bubble-bot: #ffffff;
+            --bubble-user: linear-gradient(135deg, #4f7cff, #6c63ff);
+            --shadow-light: 0 25px 50px -12px rgba(0,0,0,0.25);
+            --input-bg: #ffffff;
+            --settings-bg: rgba(255,255,255,0.95);
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient: linear-gradient(145deg, #1a1e2b 0%, #0f1219 100%);
+            --container-bg: rgba(30, 33, 48, 0.82);
+            --border-color: rgba(255,255,255,0.07);
+            --text-primary: #e8ecf4;
+            --text-secondary: #9aa3bc;
+            --bubble-bot: #282d3e;
+            --bubble-user: linear-gradient(135deg, #3b62d9, #5a52d5);
+            --shadow-light: 0 25px 50px -12px rgba(0,0,0,0.60);
+            --input-bg: #222738;
+            --settings-bg: rgba(23, 27, 38, 0.96);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            transition: background 0.3s;
+        }
+
+        .chat-container {
+            width: 440px; max-width: 100%; height: 720px; max-height: 92vh;
+            background: var(--container-bg);
+            backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+            border-radius: 32px;
+            box-shadow: var(--shadow-light), inset 0 1px 2px rgba(255,255,255,0.1);
+            display: flex; flex-direction: column; overflow: hidden;
+            border: 1px solid var(--border-color);
+            transition: background 0.3s, box-shadow 0.3s;
+            position: relative;
+        }
+
+        /* ---------- 头部 ---------- */
+        .chat-header {
+            padding: 18px 22px 12px 22px;
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .header-title {
+            flex:1;
+        }
+        .header-title h2 {
+            font-size: 17px; font-weight: 660; color: var(--text-primary);
+        }
+        .header-title p {
+            font-size: 12px; color: var(--text-secondary);
+            display: flex; align-items: center; gap: 5px;
+        }
+        .online-count {
+            font-weight: 550;
+        }
+        .header-actions {
+            display: flex; gap: 6px;
+        }
+        .header-actions button {
+            background: transparent; border: none; width: 36px; height: 36px;
+            border-radius: 10px; cursor: pointer; color: var(--text-secondary);
+            font-size: 19px; transition: background 0.15s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .header-actions button:hover {
+            background: rgba(128,128,128,0.12);
+        }
+
+        /* ---------- 消息区域 ---------- */
+        .messages-area {
+            flex: 1; padding: 16px 18px 8px 18px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 12px;
+            scroll-behavior: smooth;
+        }
+        .messages-area::-webkit-scrollbar { width: 4px; }
+        .messages-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 999px; }
+
+        .message {
+            display: flex; gap: 10px; max-width: 86%;
+            animation: msg-in 0.3s cubic-bezier(0.21,1.02,0.73,1);
+        }
+        @keyframes msg-in {
+            0% { opacity:0; transform:translateY(12px) scale(0.98); }
+            100% { opacity:1; transform:translateY(0) scale(1); }
+        }
+        .message.self { align-self: flex-end; flex-direction: row-reverse; }
+        .message.other { align-self: flex-start; }
+
+        .msg-avatar {
+            width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; background: rgba(200,200,220,0.2);
+            margin-top: 2px; user-select: none;
+        }
+        .bubble-wrapper { display: flex; flex-direction: column; gap: 3px; }
+        .bubble {
+            padding: 10px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5;
+            word-break: break-word; box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            color: var(--text-primary);
+        }
+        .message.other .bubble {
+            background: var(--bubble-bot);
+            border-bottom-left-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        .message.self .bubble {
+            background: var(--bubble-user);
+            color: #fff;
+            border-bottom-right-radius: 6px;
+        }
+        .msg-meta {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 11px; color: var(--text-secondary); padding: 0 4px;
+        }
+        .msg-nickname { font-weight: 520; }
+        .message.self .msg-meta { justify-content: flex-end; }
+
+        /* 系统消息 */
+        .system-msg {
+            text-align: center; font-size: 12px; color: var(--text-secondary);
+            padding: 4px 0; opacity: 0.65;
+        }
+
+        /* 打字指示器 */
+        .typing-indicator {
+            display: none; align-self: flex-start;
+            padding: 10px 18px; background: var(--bubble-bot);
+            border-radius: 18px; border-bottom-left-radius: 6px;
+            border: 1px solid var(--border-color); gap: 5px; align-items: center;
+        }
+        .typing-indicator.active { display: flex; }
+        .typing-indicator span {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-secondary);
+            animation: typing-bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+        @keyframes typing-bounce {
+            0%,80%,100% { transform:scale(0.6); opacity:0.4; }
+            40% { transform:scale(1); opacity:1; }
+        }
+
+        /* ---------- 输入区 ---------- */
+        .input-area {
+            padding: 12px 18px 18px 18px; display: flex; gap: 10px;
+            align-items: flex-end; border-top: 1px solid var(--border-color);
+            background: transparent;
+        }
+        .input-wrapper {
+            flex:1; background: var(--input-bg); border-radius: 26px;
+            border: 1px solid var(--border-color);
+            display: flex; align-items: flex-end; padding: 4px 4px 4px 18px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-wrapper:focus-within {
+            border-color: #4f7cff;
+            box-shadow: 0 0 0 3px rgba(79,124,255,0.15);
+        }
+        .input-wrapper textarea {
+            flex:1; border:none; outline:none; resize:none;
+            padding: 8px 0; font-size: 15px; font-family:inherit;
+            line-height:1.4; max-height:100px; min-height:22px;
+            background:transparent; color: var(--text-primary);
+        }
+        .input-wrapper textarea::placeholder { color: var(--text-secondary); opacity:0.6; }
+        .btn-send {
+            width: 40px; height: 40px; border-radius: 50%; border:none;
+            background: linear-gradient(135deg,#4f7cff,#6c63ff); color:#fff;
+            font-size: 18px; cursor:pointer; display:flex; align-items:center;
+            justify-content:center; flex-shrink:0;
+            transition: transform 0.12s, box-shadow 0.2s;
+            box-shadow: 0 4px 12px rgba(79,124,255,0.35);
+        }
+        .btn-send:hover { transform:scale(1.04); }
+        .btn-send:active { transform:scale(0.93); }
+        .btn-send:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
+
+        /* ---------- 设置面板 ---------- */
+        .settings-overlay {
+            position: absolute; inset:0; z-index:10;
+            background: rgba(0,0,0,0.25);
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .settings-overlay.open { display: flex; }
+        .settings-panel {
+            background: var(--settings-bg);
+            border-radius: 28px; padding: 28px 30px; width: 320px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            animation: panel-in 0.25s ease;
+        }
+        @keyframes panel-in {
+            0% { transform:scale(0.92); opacity:0; }
+            100% { transform:scale(1); opacity:1; }
+        }
+        .settings-panel h3 { font-size: 20px; margin-bottom: 20px; text-align: center; }
+        .settings-field { margin-bottom: 18px; }
+        .settings-field label { display: block; font-size: 14px; font-weight: 510; margin-bottom: 6px; color: var(--text-secondary); }
+        .settings-field input {
+            width: 100%; padding: 10px 14px; border-radius: 12px;
+            border: 1px solid var(--border-color); background: var(--input-bg);
+            color: var(--text-primary); font-size: 15px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .settings-field input:focus { border-color: #4f7cff; }
+        .settings-actions { display: flex; gap: 10px; margin-top: 24px; }
+        .settings-actions button {
+            flex:1; padding: 10px; border-radius: 14px; border:none;
+            font-size: 15px; font-weight: 540; cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-primary { background: #4f7cff; color: #fff; }
+        .btn-primary:hover { background: #3a66e0; }
+        .btn-secondary { background: rgba(128,128,128,0.12); color: var(--text-primary); }
+        .btn-secondary:hover { background: rgba(128,128,128,0.22); }
+
+        /* ---------- 响应式 ---------- */
+        @media (max-width: 480px) {
+            body { padding:0; }
+            .chat-container { width:100%; height:100vh; max-height:100vh; border-radius:0; }
+            .settings-panel { width: 280px; padding: 24px; }
+        }
+    </style>
+</head>
+<body>
+<div class="chat-container" id="app">
+    <!-- 头部 -->
+    <div class="chat-header">
+        <div class="header-title">
+            <h2>💬 聊天室</h2>
+            <p>在线人数: <span class="online-count" id="onlineCount">0</span></p>
+        </div>
+        <div class="header-actions">
+            <button id="themeToggle" title="切换深色/浅色">🌓</button>
+            <button id="settingsBtn" title="个人设置">⚙️</button>
+        </div>
+    </div>
+
+    <!-- 消息区域 -->
+    <div class="messages-area" id="messagesArea">
+        <div class="system-msg">欢迎来到聊天室！请先设置昵称和头像 👇</div>
+        <div class="typing-indicator" id="typingIndicator">
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-area">
+        <div class="input-wrapper">
+            <textarea id="msgInput" rows="1" placeholder="说点什么…" autofocus></textarea>
+            <button class="btn-send" id="sendBtn">➤</button>
+        </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="settings-overlay" id="settingsOverlay">
+        <div class="settings-panel">
+            <h3>🛠 个人设置</h3>
+            <div class="settings-field">
+                <label>昵称</label>
+                <input type="text" id="nicknameInput" placeholder="最多20字符" maxlength="20" />
+            </div>
+            <div class="settings-field">
+                <label>头像（Emoji 或文字）</label>
+                <input type="text" id="avatarInput" placeholder="如 😎、🐱、A" maxlength="10" />
+            </div>
+            <div class="settings-actions">
+                <button class="btn-secondary" id="cancelSettings">取消</button>
+                <button class="btn-primary" id="saveSettings">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // DOM
+    const messagesArea = document.getElementById('messagesArea');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const onlineCount = document.getElementById('onlineCount');
+    const themeToggle = document.getElementById('themeToggle');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsOverlay = document.getElementById('settingsOverlay');
+    const nicknameInput = document.getElementById('nicknameInput');
+    const avatarInput = document.getElementById('avatarInput');
+    const cancelSettings = document.getElementById('cancelSettings');
+    const saveSettings = document.getElementById('saveSettings');
+
+    // 连接 Socket.IO
+    const socket = io();
+
+    // 本地用户信息
+    let myProfile = { nickname: '', avatar: '' };
+
+    // 深色模式状态
+    let darkMode = localStorage.getItem('chat-dark-mode') === 'true';
+    if (darkMode) document.documentElement.setAttribute('data-theme', 'dark');
+
+    // ---- 工具 ----
+    function scrollBottom(smooth = true) {
+        messagesArea.scrollTo({ top: messagesArea.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    }
+
+    function addMessage(data, isSelf = false) {
+        const div = document.createElement('div');
+        div.className = `message ${isSelf ? 'self' : 'other'}`;
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'msg-avatar';
+        avatarDiv.textContent = data.avatar || '😊';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bubble-wrapper';
+
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = data.text;
+
+        const meta = document.createElement('div');
+        meta.className = 'msg-meta';
+        meta.innerHTML = `<span class="msg-nickname">${data.nickname}</span><span>${data.time}</span>`;
+
+        wrapper.appendChild(bubble);
+        wrapper.appendChild(meta);
+        div.appendChild(avatarDiv);
+        div.appendChild(wrapper);
+
+        messagesArea.insertBefore(div, typingIndicator);
+        scrollBottom();
+    }
+
+    function addSystemMsg(text) {
+        const div = document.createElement('div');
+        div.className = 'system-msg';
+        div.textContent = text;
+        messagesArea.insertBefore(div, typingIndicator);
+        scrollBottom();
+    }
+
+    // ---- 发送消息 ----
+    function sendMessage() {
+        const text = msgInput.value.trim();
+        if (!text) return;
+        socket.emit('chatMessage', text);
+        msgInput.value = '';
+        msgInput.style.height = 'auto';
+        msgInput.focus();
+    }
+
+    // ---- 设置面板 ----
+    function openSettings() {
+        nicknameInput.value = myProfile.nickname || '';
+        avatarInput.value = myProfile.avatar || '';
+        settingsOverlay.classList.add('open');
+    }
+
+    function closeSettings() {
+        settingsOverlay.classList.remove('open');
+    }
+
+    function saveProfile() {
+        const nickname = nicknameInput.value.trim() || '匿名';
+        const avatar = avatarInput.value.trim() || '😊';
+        myProfile.nickname = nickname.slice(0, 20);
+        myProfile.avatar = avatar.slice(0, 10);
+        socket.emit('setProfile', { nickname: myProfile.nickname, avatar: myProfile.avatar });
+        closeSettings();
+    }
+
+    // ---- 切换主题 ----
+    function toggleTheme() {
+        darkMode = !darkMode;
+        document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+        localStorage.setItem('chat-dark-mode', darkMode);
+    }
+
+    // ---- Socket 事件 ----
+    socket.on('connect', () => {
+        // 请求当前个人信息（如果有）
+    });
+
+    socket.on('profileUpdated', (profile) => {
+        myProfile = profile;
+    });
+
+    socket.on('message', (data) => {
+        const isSelf = data.userId === socket.id;
+        addMessage(data, isSelf);
+    });
+
+    socket.on('usersUpdate', (list) => {
+        onlineCount.textContent = list.length;
+    });
+
+    socket.on('systemMessage', (text) => {
+        addSystemMsg(text);
+    });
+
+    // 监听其他人正在输入（可选，本demo简化）
+    // socket.on('typing', ...)
+
+    // ---- 事件绑定 ----
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    msgInput.addEventListener('input', () => {
+        msgInput.style.height = 'auto';
+        msgInput.style.height = Math.min(msgInput.scrollHeight, 100) + 'px';
+    });
+
+    themeToggle.addEventListener('click', toggleTheme);
+    settingsBtn.addEventListener('click', openSettings);
+    cancelSettings.addEventListener('click', closeSettings);
+    saveSettings.addEventListener('click', saveProfile);
+
+    // 点击遮罩关闭
+    settingsOverlay.addEventListener('click', (e) => {
+        if (e.target === settingsOverlay) closeSettings();
+    });
+
+    // 初始加载
+    window.addEventListener('load', () => {
+        // 尝试从 localStorage 恢复上次的主题
+        // 自动弹出设置引导
+        setTimeout(() => {
+            if (!myProfile.nickname) {
+                openSettings();
+            }
+        }, 400);
+    });
+
+})();
+</script>
+</body>
+</html>
